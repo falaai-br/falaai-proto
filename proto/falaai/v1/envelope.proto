@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package falaai.v1;
+
+// Envelope é a unidade que o servidor guarda na fila do dispositivo destino e
+// entrega a ele. O servidor só vê ciphertext.
+//
+// Sealed sender: o envelope NÃO carrega remetente em claro, nem em campo
+// próprio nem em metadado. O remetente só aparece dentro de `content`, depois
+// que o destinatário decifra e valida o certificado de remetente.
+// Nunca adicionar campo com remetente (ACI, telefone, device id de origem).
+message Envelope {
+  // Tipo do conteúdo, em claro para o servidor decidir o push
+  // (por exemplo, VoIP push para `ENVELOPE_TYPE_CALL_SIGNAL`).
+  EnvelopeType type = 1;
+  // UUID aleatório (16 bytes) gerado pelo cliente remetente por mensagem.
+  // O remetente reenvia com o mesmo valor; o destinatário deduplica por ele.
+  // Não identifica o remetente.
+  bytes client_message_id = 2;
+  // Mensagem sealed sender da libsignal (UnidentifiedSenderMessage), opaca
+  // para o servidor.
+  bytes content = 3;
+}
+
+// EnvelopeType classifica o conteúdo do envelope sem revelá-lo.
+enum EnvelopeType {
+  ENVELOPE_TYPE_UNSPECIFIED = 0;
+  // Mensagem de conversa (texto, mídia, controle de grupo).
+  ENVELOPE_TYPE_MESSAGE = 1;
+  // Recibo de entrega ou de leitura.
+  ENVELOPE_TYPE_RECEIPT = 2;
+  // Sinalização de chamada (oferta/resposta SDP, candidatos ICE).
+  ENVELOPE_TYPE_CALL_SIGNAL = 3;
+}

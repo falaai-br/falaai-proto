@@ -26,7 +26,8 @@ generate: ## Regera gen/go do zero (remove arquivos de .proto apagados)
 lint: ## buf format check e buf lint
 	@if [ -n "$(HAS_PROTO)" ]; then $(BUF) format --diff --exit-code && $(BUF) lint; else echo "sem .proto ainda"; fi
 
-test: ## Retrocompatibilidade com a main (buf breaking)
+test: ## Retrocompatibilidade com a main (buf breaking) e testes do contrato
+	@if [ -n "$(HAS_PROTO)" ]; then go test ./...; fi
 	@if [ -z "$(HAS_PROTO)" ]; then echo "buf breaking: sem .proto ainda"; \
 	elif ! git rev-parse --verify -q $(BREAKING_BASE) >/dev/null; then \
 	  echo "buf breaking: base $(BREAKING_BASE) não encontrada; rode 'git fetch origin'" >&2; exit 1; \
