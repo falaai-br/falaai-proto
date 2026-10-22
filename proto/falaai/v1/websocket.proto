@@ -4,9 +4,16 @@ package falaai.v1;
 
 import "falaai/v1/envelope.proto";
 
-// Frame é a única mensagem que trafega no WebSocket
-// (`wss://gw.falaai.com.br/v1/ws`): cada mensagem binária do WebSocket é um
-// Frame serializado.
+// Frame é a única mensagem que trafega no WebSocket: cada mensagem binária do
+// WebSocket é um Frame serializado. Há dois sockets, em conexões TLS
+// separadas (nunca multiplexadas):
+//
+//   - `wss://gw.falaai.com.br/v1/ws`, autenticado pelo token do dispositivo.
+//     Recebe `deliver`, envia `ack` e, só como fallback, `send`.
+//   - `wss://gw.falaai.com.br/v1/ws/unidentified`, sem credencial nenhuma.
+//     Aceita só `send` (respondido com `send_ack`) e `ping`/`pong`. É por ele
+//     que vai o envelope sealed sender: o servidor recebe o destinatário mas
+//     não sabe quem envia.
 message Frame {
   oneof payload {
     // Cliente → servidor.
@@ -24,12 +31,24 @@ message Frame {
 }
 
 // Send pede ao servidor que enfileire um envelope para um dispositivo.
+//
+// Trafega no socket não autenticado, então nada aqui pode identificar quem
+// envia. O cliente só usa o socket autenticado quando não tem a
+// `unidentified_access_key` do destinatário (primeiro contato, antes de
+// receber a profile key dele); nesse caso o servidor vê o par
+// remetente/destinatário.
 message Send {
   // ACI do destinatário (UUID, 16 bytes).
   bytes destination_aci = 1;
   // Dispositivo do destinatário. O endereço de protocolo é aci + device id.
   uint32 destination_device_id = 2;
   Envelope envelope = 3;
+  // Prova do direito de enviar ao destinatário sem se identificar (16 bytes).
+  // Derivada pela libsignal da profile key do destinatário, que o remetente
+  // recebe dentro do canal E2EE; o servidor compara, em tempo constante, com
+  // a `UnidentifiedAccess` que o destinatário registrou. Obrigatória no
+  // socket não autenticado; ignorada no autenticado.
+  bytes unidentified_access_key = 4;
 }
 
 // SendAck confirma ao remetente que o envelope foi gravado na fila (ou por que
@@ -47,10 +66,16 @@ enum SendStatus {
   SEND_STATUS_ACCEPTED = 1;
   // Envelope malformado; reenviar igual não adianta.
   SEND_STATUS_INVALID = 2;
-  // Destinatário ou dispositivo inexistente.
+  // Destinatário ou dispositivo inexistente. Nunca vem do socket não
+  // autenticado, que responde `SEND_STATUS_UNAUTHORIZED` para não virar
+  // oráculo de enumeração de contas.
   SEND_STATUS_UNKNOWN_DESTINATION = 3;
   // Limite de taxa atingido; reenviar com backoff.
   SEND_STATUS_RATE_LIMITED = 4;
+  // Só no socket não autenticado: `unidentified_access_key` ausente, errada
+  // ou destinatário inexistente. O cliente pode reenviar pelo socket
+  // autenticado, aceitando expor o par ao servidor.
+  SEND_STATUS_UNAUTHORIZED = 5;
 }
 
 // Deliver entrega um envelope da fila do dispositivo conectado. A entrega é

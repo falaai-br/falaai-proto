@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package falaai.v1;
+
+// UnidentifiedAccess é o que um dispositivo registra no serviço `accounts`
+// para poder receber sealed sender pelo socket não autenticado. Quem tem a
+// profile key da conta deriva a mesma chave e a apresenta em
+// `Send.unidentified_access_key`.
+//
+// A chave é registrada por conta, não por dispositivo, e muda junto com a
+// profile key.
+message UnidentifiedAccess {
+  // 16 bytes derivados da profile key pela libsignal
+  // (`ProfileKey::derive_access_key`). O servidor só compara; não deriva nem
+  // vê a profile key.
+  bytes unidentified_access_key = 1;
+}
