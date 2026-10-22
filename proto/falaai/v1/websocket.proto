@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package falaai.v1;
+
+import "falaai/v1/envelope.proto";
+
+// Frame é a única mensagem que trafega no WebSocket
+// (`wss://gw.falaai.com.br/v1/ws`): cada mensagem binária do WebSocket é um
+// Frame serializado.
+message Frame {
+  oneof payload {
+    // Cliente → servidor.
+    Send send = 1;
+    // Servidor → cliente, em resposta a `send`.
+    SendAck send_ack = 2;
+    // Servidor → cliente.
+    Deliver deliver = 3;
+    // Cliente → servidor, em resposta a `deliver`.
+    Ack ack = 4;
+    // Qualquer lado; o outro responde com `pong`.
+    Ping ping = 5;
+    Pong pong = 6;
+  }
+}
+
+// Send pede ao servidor que enfileire um envelope para um dispositivo.
+message Send {
+  // ACI do destinatário (UUID, 16 bytes).
+  bytes destination_aci = 1;
+  // Dispositivo do destinatário. O endereço de protocolo é aci + device id.
+  uint32 destination_device_id = 2;
+  Envelope envelope = 3;
+}
+
+// SendAck confirma ao remetente que o envelope foi gravado na fila (ou por que
+// não foi). É correlacionado pelo `client_message_id` do envelope, nunca pelo
+// `seq`, que é da fila do destinatário e não deve vazar para o remetente.
+message SendAck {
+  bytes client_message_id = 1;
+  SendStatus status = 2;
+}
+
+// SendStatus é o resultado de um Send.
+enum SendStatus {
+  SEND_STATUS_UNSPECIFIED = 0;
+  // Gravado na fila; o cliente marca a mensagem como "enviada".
+  SEND_STATUS_ACCEPTED = 1;
+  // Envelope malformado; reenviar igual não adianta.
+  SEND_STATUS_INVALID = 2;
+  // Destinatário ou dispositivo inexistente.
+  SEND_STATUS_UNKNOWN_DESTINATION = 3;
+  // Limite de taxa atingido; reenviar com backoff.
+  SEND_STATUS_RATE_LIMITED = 4;
+}
+
+// Deliver entrega um envelope da fila do dispositivo conectado. A entrega é
+// at-least-once: o cliente deduplica por `seq` e por `client_message_id`.
+message Deliver {
+  // Posição na fila do dispositivo destino; o cliente devolve em Ack.
+  uint64 seq = 1;
+  // Momento em que o servidor gravou o envelope, em milissegundos desde a
+  // época Unix.
+  uint64 server_timestamp = 2;
+  Envelope envelope = 3;
+}
+
+// Ack confirma que o cliente persistiu o envelope de `seq`. Ao receber, o
+// servidor apaga o envelope da fila.
+message Ack {
+  uint64 seq = 1;
+}
+
+// Ping mantém a conexão viva e mede latência.
+message Ping {
+  // Escolhido por quem envia; ecoado no Pong.
+  uint64 id = 1;
+}
+
+// Pong responde a um Ping.
+message Pong {
+  // O `id` do Ping respondido.
+  uint64 id = 1;
+}

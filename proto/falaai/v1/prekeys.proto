@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package falaai.v1;
+
+// PreKeyBundle são as chaves públicas de um dispositivo que o remetente usa
+// para iniciar uma sessão PQXDH. O serviço `keys` entrega um bundle por fetch
+// e consome a one-time prekey entregue.
+//
+// Todas as chaves estão no formato serializado da libsignal; o servidor não
+// as interpreta além de validar assinaturas.
+message PreKeyBundle {
+  // Identity key pública do dispositivo.
+  bytes identity_key = 1;
+  uint32 device_id = 2;
+  // Registration id da libsignal do dispositivo.
+  uint32 registration_id = 3;
+  SignedPreKey signed_pre_key = 4;
+  // Kyber prekey one-time ou, se o pool acabou, a last-resort.
+  KyberPreKey kyber_pre_key = 5;
+  // Ausente quando o pool de one-time prekeys EC do dispositivo acabou.
+  OneTimePreKey one_time_pre_key = 6;
+}
+
+// SignedPreKey é a prekey EC (X25519) assinada pela identity key.
+message SignedPreKey {
+  uint32 key_id = 1;
+  bytes public_key = 2;
+  bytes signature = 3;
+}
+
+// KyberPreKey é a prekey ML-KEM assinada pela identity key.
+message KyberPreKey {
+  uint32 key_id = 1;
+  bytes public_key = 2;
+  bytes signature = 3;
+}
+
+// OneTimePreKey é uma prekey EC (X25519) de uso único, sem assinatura.
+message OneTimePreKey {
+  uint32 key_id = 1;
+  bytes public_key = 2;
+}
