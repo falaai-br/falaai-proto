@@ -30,10 +30,16 @@ const (
 	SendStatus_SEND_STATUS_ACCEPTED SendStatus = 1
 	// Envelope malformado; reenviar igual não adianta.
 	SendStatus_SEND_STATUS_INVALID SendStatus = 2
-	// Destinatário ou dispositivo inexistente.
+	// Destinatário ou dispositivo inexistente. Nunca vem do socket não
+	// autenticado, que responde `SEND_STATUS_UNAUTHORIZED` para não virar
+	// oráculo de enumeração de contas.
 	SendStatus_SEND_STATUS_UNKNOWN_DESTINATION SendStatus = 3
 	// Limite de taxa atingido; reenviar com backoff.
 	SendStatus_SEND_STATUS_RATE_LIMITED SendStatus = 4
+	// Só no socket não autenticado: `unidentified_access_key` ausente, errada
+	// ou destinatário inexistente. O cliente pode reenviar pelo socket
+	// autenticado, aceitando expor o par ao servidor.
+	SendStatus_SEND_STATUS_UNAUTHORIZED SendStatus = 5
 )
 
 // Enum value maps for SendStatus.
@@ -44,6 +50,7 @@ var (
 		2: "SEND_STATUS_INVALID",
 		3: "SEND_STATUS_UNKNOWN_DESTINATION",
 		4: "SEND_STATUS_RATE_LIMITED",
+		5: "SEND_STATUS_UNAUTHORIZED",
 	}
 	SendStatus_value = map[string]int32{
 		"SEND_STATUS_UNSPECIFIED":         0,
@@ -51,6 +58,7 @@ var (
 		"SEND_STATUS_INVALID":             2,
 		"SEND_STATUS_UNKNOWN_DESTINATION": 3,
 		"SEND_STATUS_RATE_LIMITED":        4,
+		"SEND_STATUS_UNAUTHORIZED":        5,
 	}
 )
 
@@ -81,9 +89,16 @@ func (SendStatus) EnumDescriptor() ([]byte, []int) {
 	return file_falaai_v1_websocket_proto_rawDescGZIP(), []int{0}
 }
 
-// Frame é a única mensagem que trafega no WebSocket
-// (`wss://gw.falaai.com.br/v1/ws`): cada mensagem binária do WebSocket é um
-// Frame serializado.
+// Frame é a única mensagem que trafega no WebSocket: cada mensagem binária do
+// WebSocket é um Frame serializado. Há dois sockets, em conexões TLS
+// separadas (nunca multiplexadas):
+//
+//   - `wss://gw.falaai.com.br/v1/ws`, autenticado pelo token do dispositivo.
+//     Recebe `deliver`, envia `ack` e, só como fallback, `send`.
+//   - `wss://gw.falaai.com.br/v1/ws/unidentified`, sem credencial nenhuma.
+//     Aceita só `send` (respondido com `send_ack`) e `ping`/`pong`. É por ele
+//     que vai o envelope sealed sender: o servidor recebe o destinatário mas
+//     não sabe quem envia.
 type Frame struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Payload:
@@ -236,6 +251,12 @@ func (*Frame_Ping) isFrame_Payload() {}
 func (*Frame_Pong) isFrame_Payload() {}
 
 // Send pede ao servidor que enfileire um envelope para um dispositivo.
+//
+// Trafega no socket não autenticado, então nada aqui pode identificar quem
+// envia. O cliente só usa o socket autenticado quando não tem a
+// `unidentified_access_key` do destinatário (primeiro contato, antes de
+// receber a profile key dele); nesse caso o servidor vê o par
+// remetente/destinatário.
 type Send struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ACI do destinatário (UUID, 16 bytes).
@@ -243,8 +264,14 @@ type Send struct {
 	// Dispositivo do destinatário. O endereço de protocolo é aci + device id.
 	DestinationDeviceId uint32    `protobuf:"varint,2,opt,name=destination_device_id,json=destinationDeviceId,proto3" json:"destination_device_id,omitempty"`
 	Envelope            *Envelope `protobuf:"bytes,3,opt,name=envelope,proto3" json:"envelope,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Prova do direito de enviar ao destinatário sem se identificar (16 bytes).
+	// Derivada pela libsignal da profile key do destinatário, que o remetente
+	// recebe dentro do canal E2EE; o servidor compara, em tempo constante, com
+	// a `UnidentifiedAccess` que o destinatário registrou. Obrigatória no
+	// socket não autenticado; ignorada no autenticado.
+	UnidentifiedAccessKey []byte `protobuf:"bytes,4,opt,name=unidentified_access_key,json=unidentifiedAccessKey,proto3" json:"unidentified_access_key,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *Send) Reset() {
@@ -294,6 +321,13 @@ func (x *Send) GetDestinationDeviceId() uint32 {
 func (x *Send) GetEnvelope() *Envelope {
 	if x != nil {
 		return x.Envelope
+	}
+	return nil
+}
+
+func (x *Send) GetUnidentifiedAccessKey() []byte {
+	if x != nil {
+		return x.UnidentifiedAccessKey
 	}
 	return nil
 }
@@ -568,11 +602,12 @@ const file_falaai_v1_websocket_proto_rawDesc = "" +
 	"\x03ack\x18\x04 \x01(\v2\x0e.falaai.v1.AckH\x00R\x03ack\x12%\n" +
 	"\x04ping\x18\x05 \x01(\v2\x0f.falaai.v1.PingH\x00R\x04ping\x12%\n" +
 	"\x04pong\x18\x06 \x01(\v2\x0f.falaai.v1.PongH\x00R\x04pongB\t\n" +
-	"\apayload\"\x94\x01\n" +
+	"\apayload\"\xcc\x01\n" +
 	"\x04Send\x12'\n" +
 	"\x0fdestination_aci\x18\x01 \x01(\fR\x0edestinationAci\x122\n" +
 	"\x15destination_device_id\x18\x02 \x01(\rR\x13destinationDeviceId\x12/\n" +
-	"\benvelope\x18\x03 \x01(\v2\x13.falaai.v1.EnvelopeR\benvelope\"d\n" +
+	"\benvelope\x18\x03 \x01(\v2\x13.falaai.v1.EnvelopeR\benvelope\x126\n" +
+	"\x17unidentified_access_key\x18\x04 \x01(\fR\x15unidentifiedAccessKey\"d\n" +
 	"\aSendAck\x12*\n" +
 	"\x11client_message_id\x18\x01 \x01(\fR\x0fclientMessageId\x12-\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x15.falaai.v1.SendStatusR\x06status\"w\n" +
@@ -585,14 +620,15 @@ const file_falaai_v1_websocket_proto_rawDesc = "" +
 	"\x04Ping\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\"\x16\n" +
 	"\x04Pong\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x04R\x02id*\x9f\x01\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id*\xbd\x01\n" +
 	"\n" +
 	"SendStatus\x12\x1b\n" +
 	"\x17SEND_STATUS_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14SEND_STATUS_ACCEPTED\x10\x01\x12\x17\n" +
 	"\x13SEND_STATUS_INVALID\x10\x02\x12#\n" +
 	"\x1fSEND_STATUS_UNKNOWN_DESTINATION\x10\x03\x12\x1c\n" +
-	"\x18SEND_STATUS_RATE_LIMITED\x10\x04B\xa1\x01\n" +
+	"\x18SEND_STATUS_RATE_LIMITED\x10\x04\x12\x1c\n" +
+	"\x18SEND_STATUS_UNAUTHORIZED\x10\x05B\xa1\x01\n" +
 	"\rcom.falaai.v1B\x0eWebsocketProtoP\x01Z;github.com/falaai-br/falaai-proto/gen/go/falaai/v1;falaaiv1\xa2\x02\x03FXX\xaa\x02\tFalaai.V1\xca\x02\tFalaai\\V1\xe2\x02\x15Falaai\\V1\\GPBMetadata\xea\x02\n" +
 	"Falaai::V1b\x06proto3"
 

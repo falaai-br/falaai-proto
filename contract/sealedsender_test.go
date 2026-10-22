@@ -7,22 +7,37 @@ import (
 	"testing"
 
 	falaaiv1 "github.com/falaai-br/falaai-proto/gen/go/falaai/v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
-// Mudar esta lista exige revisar se o campo novo identifica o remetente.
-var envelopeFields = []string{"type", "client_message_id", "content"}
+// Mudar estas listas exige revisar se o campo novo identifica o remetente.
+var (
+	envelopeFields = []string{"type", "client_message_id", "content"}
+	// Send trafega no socket não autenticado.
+	sendFields = []string{"destination_aci", "destination_device_id", "envelope", "unidentified_access_key"}
+)
 
 func TestEnvelopeHasOnlyAllowedFields(t *testing.T) {
-	fields := (&falaaiv1.Envelope{}).ProtoReflect().Descriptor().Fields()
-	var got []string
-	for i := range fields.Len() {
-		got = append(got, string(fields.Get(i).Name()))
-	}
-	if !slices.Equal(got, envelopeFields) {
+	if got := fieldNames(&falaaiv1.Envelope{}); !slices.Equal(got, envelopeFields) {
 		t.Errorf("campos de Envelope = %v, esperado %v (sealed sender: nada de remetente em claro)", got, envelopeFields)
 	}
+}
+
+func TestSendHasOnlyAllowedFields(t *testing.T) {
+	if got := fieldNames(&falaaiv1.Send{}); !slices.Equal(got, sendFields) {
+		t.Errorf("campos de Send = %v, esperado %v (socket não autenticado: nada que identifique o remetente)", got, sendFields)
+	}
+}
+
+func fieldNames(m proto.Message) []string {
+	fields := m.ProtoReflect().Descriptor().Fields()
+	var names []string
+	for i := range fields.Len() {
+		names = append(names, string(fields.Get(i).Name()))
+	}
+	return names
 }
 
 func TestNoFieldCarriesSender(t *testing.T) {
