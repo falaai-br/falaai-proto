@@ -8,3 +8,6 @@ plugins:
   - local: protoc-gen-go
     out: gen/go
     opt: paths=source_relative
+  - local: protoc-gen-prost
+    out: gen/rust/src/generated
+    opt: flat_output_dir

@@ -6,7 +6,7 @@ Este repositório faz parte do **FalaAí**, mensageiro brasileiro com criptograf
 
 ## Stack
 
-Protocol Buffers (proto3) gerenciados com `buf`. Código Go gerado é versionado em `gen/go`; o Rust gera via `prost-build` no falaai-core.
+Protocol Buffers (proto3) gerenciados com `buf`. Código gerado é versionado: Go em `gen/go`, Rust (prost, via `protoc-gen-prost`) no crate `gen/rust`, que o falaai-core consome como dependência git pinada por commit.
 
 ## Licença
 

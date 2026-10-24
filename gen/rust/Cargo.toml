@@ -1,0 +1,13 @@
+[package]
+name = "falaai-proto"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Tipos Rust (prost) dos contratos do FalaAí"
+repository = "https://github.com/falaai-br/falaai-proto"
+publish = false
+
+[dependencies]
+# Mesma série que a libsignal pinada no falaai-core trava, e a que o protoc-gen-prost
+# pinado no Makefile gera.
+prost = "0.14.1"
